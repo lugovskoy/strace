@@ -14,8 +14,22 @@
 
 #include "defs.h"
 
+struct FileQueue {
+  char *filename;
+  struct FileQueue *next;
+};
+
+
+static void fileq_free(struct FileQueue *fq) {
+  if (fq) {
+    if (fq->filename)
+      free(fq->filename);
+    free(fq);
+  }
+}
+
 static void
-printargv(struct tcb *const tcp, kernel_ulong_t addr, char **file)
+printargv(struct tcb *const tcp, kernel_ulong_t addr, struct FileQueue **fileq)
 {
 	if (!addr || !verbose(tcp)) {
 		printaddr(addr);
@@ -57,9 +71,14 @@ printargv(struct tcb *const tcp, kernel_ulong_t addr, char **file)
     char *cmd_arg = printstr_exec(tcp, wordsize < sizeof(cp.p64) ? cp.p32 : cp.p64);
     if (cmd_arg == NULL)
       continue;
-    if (file && cmd_arg[0] == '"' && cmd_arg[1] == '@') {
-      *file = xstrdup(cmd_arg+2);
-      (*file)[strlen(*file)-1] = 0;
+    if (fileq && cmd_arg[0] == '"' && cmd_arg[1] == '@') {
+      char *filename = xstrdup(cmd_arg+2);
+      filename[strlen(filename)-1] = 0;
+
+      struct FileQueue *new_fileq = (struct FileQueue *)xmalloc(sizeof(struct FileQueue));
+      new_fileq->filename = filename;
+      new_fileq->next = *fileq;
+      *fileq = new_fileq;
     }
 		tprints(cmd_arg);
     free(cmd_arg);
@@ -116,6 +135,10 @@ static char *read_file(char *filename)
       free(buf);
       buf = NULL;
     }
+    else
+      for (int i = 0; buf[i] != '\0'; ++i)
+        if (buf[i] == '\n' || buf[i] == '\r')
+          buf[i] = ' ';
   }
   return buf;
 }
@@ -123,28 +146,29 @@ static char *read_file(char *filename)
 static void
 decode_execve(struct tcb *tcp, const unsigned int index)
 {
-  char *file = NULL;
+  struct FileQueue *fileq = NULL, *fileq_tmp = NULL;
 
 	printpath(tcp, tcp->u_arg[index + 0]);
 	tprints(", ");
 
-	printargv(tcp, tcp->u_arg[index + 1], &file);
+	printargv(tcp, tcp->u_arg[index + 1], &fileq);
 	tprints(", ");
 
-  tprints("[\"");
-  if (file != NULL) {
-    char *content = read_file(file);
+  tprints("{");
+  while (fileq != NULL) {
+    char *content = read_file(fileq->filename);
     if (content != NULL) {
-      for (int i = 0; content[i] != '\0'; ++i) {
-        if (content[i] == '\n' || content[i] == '\r')
-          content[i] = ' ';
-      }
-      tprints(content);
+      if (fileq_tmp != NULL)
+        tprints(",");
+      tprints("\"");tprints(fileq->filename);tprints("\":");
+      tprints("\"");tprints(content);tprints("\"");
       free(content);
     }
-    free(file);
+    fileq_tmp = fileq;
+    fileq = fileq->next;
+    fileq_free(fileq_tmp);
   }
-  tprints("\"]");
+  tprints("}");
   tprints(", ");
 
   if (abbrev(tcp))
