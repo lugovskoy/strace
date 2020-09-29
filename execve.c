@@ -134,12 +134,14 @@ decode_execve(struct tcb *tcp, const unsigned int index)
   tprints("[\"");
   if (file != NULL) {
     char *content = read_file(file);
-    for (int i = 0; content[i] != '\0'; ++i) {
-      if (content[i] == '\n' || content[i] == '\r')
-        content[i] = ' ';
+    if (content != NULL) {
+      for (int i = 0; content[i] != '\0'; ++i) {
+        if (content[i] == '\n' || content[i] == '\r')
+          content[i] = ' ';
+      }
+      tprints(content);
+      free(content);
     }
-    tprints(content);
-    free(content);
     free(file);
   }
   tprints("\"]");
