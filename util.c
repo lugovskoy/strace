@@ -1032,6 +1032,63 @@ printstr_ex(struct tcb *const tcp, const kernel_ulong_t addr,
 	return rc;
 }
 
+char *
+printstr_ex_exec(struct tcb *const tcp, const kernel_ulong_t addr,
+	    const kernel_ulong_t len, const unsigned int user_style)
+{
+	char *str = NULL;
+	char *outstr = NULL;
+
+	unsigned int size;
+	unsigned int style = user_style;
+	int rc;
+
+	if (!addr) {
+		return NULL;
+	}
+	/* Allocate static buffers if they are not allocated yet. */
+	if (!str) {
+		const unsigned int outstr_size =
+			4 * max_strlen + /* for quotes and NUL */ 3;
+		/*
+		 * We can assume that outstr_size / 4 == max_strlen
+		 * since we have a guarantee that max_strlen <= -1U / 4.
+		 */
+
+		str = xmalloc(max_strlen + 1);
+		outstr = xmalloc(outstr_size);
+	}
+
+	/* Fetch one byte more because string_quote may look one byte ahead. */
+	size = max_strlen + 1;
+
+	if (size > len)
+		size = len;
+	if (style & QUOTE_0_TERMINATED)
+		rc = umovestr(tcp, addr, size, str);
+	else
+		rc = umoven(tcp, addr, size, str);
+
+	if (rc < 0) {
+    free(str);
+    free(outstr);
+		return NULL;
+	}
+
+	if (size > max_strlen)
+		size = max_strlen;
+	else
+		str[size] = '\xff';
+
+	/* If string_quote didn't see NUL and (it was supposed to be ASCIZ str
+	 * or we were requested to print more than -s NUM chars)...
+	 */
+	string_quote(str, outstr, size, style, NULL);
+
+  free(str);
+	return outstr;
+}
+
 bool
 print_nonzero_bytes(struct tcb *const tcp, const char *prefix,
 		    const kernel_ulong_t start_addr,

@@ -15,7 +15,7 @@
 #include "defs.h"
 
 static void
-printargv(struct tcb *const tcp, kernel_ulong_t addr)
+printargv(struct tcb *const tcp, kernel_ulong_t addr, char **file)
 {
 	if (!addr || !verbose(tcp)) {
 		printaddr(addr);
@@ -54,7 +54,15 @@ printargv(struct tcb *const tcp, kernel_ulong_t addr)
 			break;
 		}
 		tprints(sep);
-		printstr(tcp, wordsize < sizeof(cp.p64) ? cp.p32 : cp.p64);
+    char *cmd_arg = printstr_exec(tcp, wordsize < sizeof(cp.p64) ? cp.p32 : cp.p64);
+    if (cmd_arg == NULL)
+      continue;
+    if (file && cmd_arg[0] == '"' && cmd_arg[1] == '@') {
+      *file = xstrdup(cmd_arg+2);
+      (*file)[strlen(*file)-1] = 0;
+    }
+		tprints(cmd_arg);
+    free(cmd_arg);
 	}
 	tprints("]");
 }
@@ -87,16 +95,60 @@ printargc(struct tcb *const tcp, kernel_ulong_t addr)
 		unterminated ? ", unterminated" : "");
 }
 
+static char *read_file(char *filename)
+{
+  char *buf = NULL;
+  FILE *fp = fopen(filename, "r");
+
+  if (fp) {
+    fseek(fp, 0, SEEK_END);
+
+    size_t buf_size = ftell(fp);
+		rewind(fp);
+
+    buf = (char*)xmalloc(sizeof(char) * (buf_size + 1) );
+    size_t read_size = fread(buf, sizeof(char), buf_size, fp);
+    buf[buf_size] = '\0';
+
+    fclose(fp);
+
+    if (buf_size != read_size) {
+      free(buf);
+      buf = NULL;
+    }
+  }
+  return buf;
+}
+
 static void
 decode_execve(struct tcb *tcp, const unsigned int index)
 {
+  char *file = NULL;
+
 	printpath(tcp, tcp->u_arg[index + 0]);
 	tprints(", ");
 
-	printargv(tcp, tcp->u_arg[index + 1]);
+	printargv(tcp, tcp->u_arg[index + 1], &file);
 	tprints(", ");
 
-	(abbrev(tcp) ? printargc : printargv) (tcp, tcp->u_arg[index + 2]);
+  tprints("[\"");
+  if (file != NULL) {
+    char *content = read_file(file);
+    for (int i = 0; content[i] != '\0'; ++i) {
+      if (content[i] == '\n' || content[i] == '\r')
+        content[i] = ' ';
+    }
+    tprints(content);
+    free(content);
+    free(file);
+  }
+  tprints("\"]");
+  tprints(", ");
+
+  if (abbrev(tcp))
+    printargc(tcp, tcp->u_arg[index + 2]);
+  else
+    printargv(tcp, tcp->u_arg[index + 2], NULL);
 }
 
 SYS_FUNC(execve)

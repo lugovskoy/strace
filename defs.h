@@ -1047,6 +1047,10 @@ extern int
 printstr_ex(struct tcb *, kernel_ulong_t addr, kernel_ulong_t len,
 	    unsigned int user_style);
 
+extern char *
+printstr_ex_exec(struct tcb *, kernel_ulong_t addr, kernel_ulong_t len,
+	    unsigned int user_style);
+
 /**
  * Print a region of tracee memory only in case non-zero bytes are present
  * there.  It almost fits into printstr_ex, but it has some pretty specific
@@ -1353,6 +1357,12 @@ static inline int
 printstr(struct tcb *tcp, kernel_ulong_t addr)
 {
 	return printstr_ex(tcp, addr, -1, QUOTE_0_TERMINATED);
+}
+
+static inline char *
+printstr_exec(struct tcb *tcp, kernel_ulong_t addr)
+{
+	return printstr_ex_exec(tcp, addr, -1, QUOTE_0_TERMINATED);
 }
 
 static inline int
