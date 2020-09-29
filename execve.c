@@ -116,7 +116,7 @@ printargc(struct tcb *const tcp, kernel_ulong_t addr)
 
 static char *read_file(char *filename)
 {
-  char *buf = NULL;
+  char *outbuf = NULL, *inbuf = NULL;
   FILE *fp = fopen(filename, "r");
 
   if (fp) {
@@ -125,22 +125,36 @@ static char *read_file(char *filename)
     size_t buf_size = ftell(fp);
 		rewind(fp);
 
-    buf = (char*)xmalloc(sizeof(char) * (buf_size + 1) );
-    size_t read_size = fread(buf, sizeof(char), buf_size, fp);
-    buf[buf_size] = '\0';
+    inbuf = (char *)xcalloc(sizeof(char), buf_size + 1);
+    outbuf = (char *)xcalloc(sizeof(char), buf_size * 2 + 1);
+    size_t read_size = fread(inbuf, sizeof(char), buf_size, fp);
 
     fclose(fp);
 
     if (buf_size != read_size) {
-      free(buf);
-      buf = NULL;
+      free(outbuf);
+      outbuf = NULL;
     }
     else
-      for (int i = 0; buf[i] != '\0'; ++i)
-        if (buf[i] == '\n' || buf[i] == '\r')
-          buf[i] = ' ';
+      for (int i = 0, j = 0; inbuf[i] != '\0'; ++i, ++j) {
+        if (inbuf[i] == '\n' || inbuf[i] == '\r') {
+          outbuf[j] = '\\';
+          outbuf[++j] = 'n';
+        }
+        else if (inbuf[i] == '\\') {
+          outbuf[j] = '\\';
+          outbuf[++j] = '\\';
+        }
+        else if (inbuf[i] == '"') {
+          outbuf[j] = '\\';
+          outbuf[++j] = '"';
+        }
+        else
+          outbuf[j] = inbuf[i];
+      }
+    free(inbuf);
   }
-  return buf;
+  return outbuf;
 }
 
 static void
