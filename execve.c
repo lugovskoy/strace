@@ -184,6 +184,16 @@ decode_execve(struct tcb *tcp, const unsigned int index)
   }
   tprints("}");
   tprints(", ");
+  tprints("\"");
+  {
+    char buf[PATH_MAX + 1] = {0};
+    char proc_cwd[32];
+    snprintf(proc_cwd, sizeof(proc_cwd), "/proc/%d/cwd", tcp->pid);
+    if (readlink(proc_cwd, buf, sizeof(buf) - 1) > 0)
+      tprints(buf);
+  }
+  tprints("\"");
+  tprints(", ");
 
   if (abbrev(tcp))
     printargc(tcp, tcp->u_arg[index + 2]);
